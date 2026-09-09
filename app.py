@@ -9,32 +9,14 @@ import numpy as np
 from supabase import create_client
 from datetime import datetime
 
-# ===== 解决Matplotlib中文显示问题 =====
-# 获取当前文件所在目录
-current_dir = os.path.dirname(os.path.abspath(__file__))
-font_path = os.path.join(current_dir, 'simhei.ttf')
-
-# 检查字体文件是否存在
-if os.path.exists(font_path):
-    # 将字体添加到 Matplotlib 的字体管理器
-    fm.fontManager.addfont(font_path)
-    # 设置默认字体为 SimHei
-    plt.rcParams['font.sans-serif'] = ['SimHei']
-else:
-    # 如果字体文件没找到，尝试用系统可能有的中文字体（备用方案）
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'DejaVu Sans']
-
-# 解决坐标轴负号 '-' 显示为方块的问题
-plt.rcParams['axes.unicode_minus'] = False
-
 # ===== 页面配置 =====
 st.set_page_config(page_title="AI趋同度测试", layout="wide")
 st.title("🧪 AI生成文案趋同度分析")
 st.caption("现场实验：看看大模型是不是都在说一样的话")
 
 # ===== 初始化Supabase客户端 =====
-SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co/rest/v1/"
-SUPABASE_KEY = "@Liyuan129382"
+SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
+SUPABASE_KEY = "sb_publishable_QIxRoM_k-ivUnTxAyGPfXQ_LuQ4ihST"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ===== 所有函数都从Supabase读写数据 =====
