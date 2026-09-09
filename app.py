@@ -15,8 +15,8 @@ st.title("🧪 AI生成文案趋同度分析")
 st.caption("现场实验：看看大模型是不是都在说一样的话")
 
 # ===== 初始化Supabase客户端 =====
-SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co/rest/v1/"
-SUPABASE_KEY = "sb_publishable_QIxRoM_k-ivUnTxAyGPfXQ_LuQ4ihST"
+SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZWJteHJiamZsbnlrb3RjY21hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MzcxNDYsImV4cCI6MjEwNDUxMzE0Nn0.3CYlfLv_WeliP48vFG108fCNLD-BIhwINj25nkMElqo"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ===== 所有函数都从Supabase读写数据 =====
