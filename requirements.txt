@@ -4,3 +4,4 @@ jieba
 wordcloud
 matplotlib
 numpy
+supabase
