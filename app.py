@@ -8,6 +8,28 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
 
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import os
+
+# ===== 解决Matplotlib中文显示问题 =====
+# 获取当前文件所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+font_path = os.path.join(current_dir, 'simhei.ttf')
+
+# 检查字体文件是否存在
+if os.path.exists(font_path):
+    # 将字体添加到 Matplotlib 的字体管理器
+    fm.fontManager.addfont(font_path)
+    # 设置默认字体为 SimHei
+    plt.rcParams['font.sans-serif'] = ['SimHei']
+else:
+    # 如果字体文件没找到，尝试用系统可能有的中文字体（备用方案）
+    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 'DejaVu Sans']
+
+# 解决坐标轴负号 '-' 显示为方块的问题
+plt.rcParams['axes.unicode_minus'] = False
+
 # ===== 页面配置 =====
 st.set_page_config(page_title="AI趋同度测试", layout="wide")
 st.title("🧪 AI生成文案趋同度分析")
