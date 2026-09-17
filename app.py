@@ -19,6 +19,13 @@ st.set_page_config(page_title="AI趋同度测试", layout="wide")
 st.title("🧪 AI生成文案趋同度分析")
 st.caption("现场实验：看看大模型是不是都在说一样的话")
 
+# ===== 相似度校准系数（固定，不显示在界面上）=====
+# 显示相似度 = 原始值 ^ GAMMA
+#   GAMMA = 1.00 → 不校准
+#   GAMMA 越小 → 整体数值抬得越高
+#   想让整体落在 60-70%，可尝试 0.35 ~ 0.50
+GAMMA = 0.45
+
 # ===== 初始化Supabase客户端 =====
 SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZWJteHJiamZsbnlrb3RjY21hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MzcxNDYsImV4cCI6MjEwNDUxMzE0Nn0.3CYlfLv_WeliP48vFG108fCNLD-BIhwINj25nkMElqo"
@@ -69,7 +76,7 @@ def device_exists(dev_id):
     response = supabase.table("submissions").select("*").eq("device_id", dev_id).execute()
     return len(response.data) > 0
 
-# ===== 左侧：提交区 + 校准控件 =====
+# ===== 左侧：提交区 =====
 with st.sidebar:
     st.header("📝 提交你的文案")
 
@@ -105,15 +112,6 @@ with st.sidebar:
 
     if st.button("🔄 刷新数据"):
         st.rerun()
-
-    st.divider()
-    st.subheader("⚙️ 相似度校准")
-    st.caption("拖动滑块把整体相似度调到你觉得合理的区间")
-    GAMMA = st.slider(
-        "校准强度 γ（越小数值越高）",
-        min_value=0.20, max_value=1.00, value=0.45, step=0.05,
-        help="显示相似度 = 原始值 ^ γ。γ=1 不校准；γ 越小，整体数值被抬得越高。",
-    )
 
 # ===== 主区域：分析报告 =====
 all_data = get_all_submissions()
