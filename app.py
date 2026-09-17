@@ -19,34 +19,50 @@ SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZWJteHJiamZsbnlrb3RjY21hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MzcxNDYsImV4cCI6MjEwNDUxMzE0Nn0.3CYlfLv_WeliP48vFG108fCNLD-BIhwINj25nkMElqo"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ===== 所有函数都从Supabase读写数据 =====
+# ===== 数据读写 =====
 def get_all_submissions():
     response = supabase.table("submissions").select("*").order("created_at").execute()
     return response.data
 
 def add_submission(name, text):
-    data = {"name": name, "text": text}
-    supabase.table("submissions").insert(data).execute()
+    supabase.table("submissions").insert({"name": name, "text": text}).execute()
+
+def name_exists(name):
+    """检查该昵称是否已经提交过（服务端去重）"""
+    response = supabase.table("submissions").select("*").eq("name", name).execute()
+    return len(response.data) > 0
 
 # ===== 左侧：提交区 =====
 with st.sidebar:
     st.header("📝 提交你的文案")
-    with st.form("submit_form"):
-        name = st.text_input("你的昵称（可匿名）")
-        text = st.text_area("粘贴AI生成的文案", height=150)
-        submitted = st.form_submit_button("🚀 提交")
-        if submitted and text:
-            add_submission(name or "匿名", text)
-            st.success("✅ 提交成功！点击页面顶部的 '🔄' 刷新查看最新数据")
-            st.rerun()
-    
-    st.divider()
-    
-    # 实时显示提交总数（每次刷新页面时更新）
+
     all_data = get_all_submissions()
     st.metric("📊 已提交文案数", len(all_data))
-    
-    # 手动刷新按钮
+
+    if st.session_state.get("submitted"):
+        st.success("✅ 你已经提交过了，每人限提交一次～")
+    else:
+        with st.form("submit_form"):
+            name = st.text_input("你的昵称", help="用于限制每人只提交一次，请勿与他人重复")
+            text = st.text_area("粘贴AI生成的文案", height=150)
+            submitted = st.form_submit_button("🚀 提交")
+
+            if submitted:
+                name = (name or "").strip()
+                text = (text or "").strip()
+                if not name:
+                    st.error("❌ 请填写昵称（用于限制每人提交一次）")
+                elif not text:
+                    st.error("❌ 请粘贴你的文案")
+                elif name_exists(name):
+                    st.error(f"❌ 昵称「{name}」已提交过，每人限提交一次")
+                else:
+                    add_submission(name, text)
+                    st.session_state["submitted"] = True
+                    st.rerun()
+
+    st.divider()
+
     if st.button("🔄 刷新数据"):
         st.rerun()
 
@@ -61,20 +77,50 @@ if len(all_data) < 2:
 texts = [item["text"] for item in all_data]
 names = [item["name"] or f"匿名{i+1}" for i, item in enumerate(all_data)]
 
-# ---- 以下分析代码与之前完全相同 ----
+# ===== 分词 =====
 def cut_text(text):
     return " ".join(jieba.cut(text))
 
-vectorizer = TfidfVectorizer(tokenizer=cut_text, token_pattern=None)
-tfidf_matrix = vectorizer.fit_transform(texts)
-sim_matrix = cosine_similarity(tfidf_matrix)
+tokenized = [cut_text(t) for t in texts]
+n = len(tokenized)
 
+# ===== 相似度算法：TF-IDF bigram 余弦 + Jaccard 词集加权平均 =====
+# 1) TF-IDF：加入词级 bigram，压制高频虚词
+vectorizer = TfidfVectorizer(
+    tokenizer=cut_text,
+    token_pattern=None,
+    ngram_range=(1, 2),     # 让"词序/搭配"也参与判定
+    sublinear_tf=True,      # 高频词权重按 1+log(tf) 衰减
+    min_df=1,
+)
+tfidf_matrix = vectorizer.fit_transform(texts)
+cos_sim = cosine_similarity(tfidf_matrix)
+
+# 2) Jaccard：按去重词集计算
+def jaccard(a, b):
+    sa, sb = set(a.split()), set(b.split())
+    union = sa | sb
+    return len(sa & sb) / len(union) if union else 0.0
+
+jac_sim = np.zeros((n, n))
+for i in range(n):
+    for j in range(i + 1, n):
+        s = jaccard(tokenized[i], tokenized[j])
+        jac_sim[i, j] = jac_sim[j, i] = s
+np.fill_diagonal(jac_sim, 1.0)
+
+# 3) 加权平均：0.5 余弦 + 0.5 Jaccard，把虚高的相似度拉回自然区间
+sim_matrix = 0.5 * cos_sim + 0.5 * jac_sim
+
+# 全部两两组合
 pairs = []
-for i in range(len(texts)):
-    for j in range(i+1, len(texts)):
-        pairs.append((i, j, sim_matrix[i][j]))
+for i in range(n):
+    for j in range(i + 1, n):
+        pairs.append((i, j, float(sim_matrix[i][j])))
 pairs.sort(key=lambda x: x[2], reverse=True)
-top_pairs = pairs[:5]
+
+# 每位参与者对全体的平均相似度
+person_avg = (sim_matrix.sum(axis=1) - 1) / (n - 1)
 
 # ===== Matplotlib中文字体设置 =====
 import matplotlib.font_manager as fm
@@ -95,7 +141,7 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("相似度分布")
-        all_sims = [sim_matrix[i][j] for i in range(len(texts)) for j in range(i+1, len(texts))]
+        all_sims = [sim_matrix[i][j] for i in range(n) for j in range(i + 1, n)]
         fig, ax = plt.subplots()
         ax.hist(all_sims, bins=20, color="steelblue", edgecolor="white")
         ax.set_xlabel("相似度")
@@ -103,22 +149,44 @@ with tab1:
         ax.axvline(np.mean(all_sims), color="red", linestyle="--", label=f"均值: {np.mean(all_sims):.1%}")
         ax.legend()
         st.pyplot(fig)
-    
+
     with col2:
         st.subheader("相似度热力图")
         fig, ax = plt.subplots(figsize=(6, 5))
         im = ax.imshow(sim_matrix, cmap="Reds", vmin=0, vmax=1)
-        ax.set_xticks(range(len(names)))
-        ax.set_yticks(range(len(names)))
+        ax.set_xticks(range(n))
+        ax.set_yticks(range(n))
         ax.set_xticklabels(names, rotation=45, ha="right", fontsize=8)
         ax.set_yticklabels(names, fontsize=8)
         plt.colorbar(im, ax=ax, label="相似度")
         st.pyplot(fig)
 
+    st.divider()
+
+    st.subheader(f"👥 全部参与者（共 {n} 人）平均趋同度")
+    st.caption("平均相似度 = 该同学与其余所有人的相似度均值，越高说明其文案越'模板化'")
+    person_df = pd.DataFrame({
+        "昵称": names,
+        "平均相似度": person_avg,
+        "文案字数": [len(t) for t in texts],
+    }).sort_values("平均相似度", ascending=False).reset_index(drop=True)
+    person_df.insert(0, "排名", range(1, len(person_df) + 1))
+    st.dataframe(
+        person_df.style.format({"平均相似度": "{:.1%}"}),
+        use_container_width=True,
+        hide_index=True,
+    )
+
 with tab2:
-    st.subheader("🏆 最相似的5对文案")
-    for idx, (i, j, score) in enumerate(top_pairs):
-        with st.expander(f"#{idx+1} 相似度: {score:.1%}"):
+    st.subheader("🏆 全部文案两两趋同排行")
+    st.caption(f"共 {len(pairs)} 对组合，按相似度从高到低排列")
+
+    min_sim = st.slider("筛选：只显示相似度 ≥", 0.0, 1.0, 0.0, 0.05)
+    shown_pairs = [(i, j, s) for (i, j, s) in pairs if s >= min_sim]
+    st.write(f"当前展示 **{len(shown_pairs)}** 对")
+
+    for idx, (i, j, score) in enumerate(shown_pairs):
+        with st.expander(f"#{idx+1}  {names[i]} vs {names[j]} —— 相似度 {score:.1%}"):
             col1, col2 = st.columns(2)
             with col1:
                 st.caption(f"**{names[i]}**")
@@ -133,7 +201,7 @@ with tab3:
     words = jieba.cut(all_text)
     words = [w for w in words if len(w) > 1]
     filtered_text = " ".join(words)
-    
+
     wc = WordCloud(
         font_path="simhei.ttf" if os.path.exists("simhei.ttf") else None,
         background_color="white",
@@ -141,7 +209,7 @@ with tab3:
         height=400,
         max_words=100
     ).generate(filtered_text)
-    
+
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
@@ -150,13 +218,14 @@ with tab3:
 
 with tab4:
     st.subheader("🔍 任选两篇文案对比")
-    if len(top_pairs) > 0:
-        options = [f"第{i+1}对（{names[a]} vs {names[b]}，相似度{score:.1%}）" 
-                   for i, (a, b, score) in enumerate(top_pairs)]
+    if len(pairs) > 0:
+        options = [
+            f"{names[a]} vs {names[b]}（相似度 {score:.1%}）"
+            for a, b, score in pairs
+        ]
         selected = st.selectbox("选择要对比的文案对", options, index=0)
-        idx = options.index(selected)
-        i, j, score = top_pairs[idx]
-        
+        i, j, score = pairs[options.index(selected)]
+
         col1, col2 = st.columns(2)
         with col1:
             st.subheader(f"📄 {names[i]}")
@@ -164,6 +233,6 @@ with tab4:
         with col2:
             st.subheader(f"📄 {names[j]}")
             st.write(texts[j])
-        
+
         st.metric("📈 相似度", f"{score:.1%}")
         st.caption("🔴 两篇文案在措辞、结构、语气上高度趋同——这就是大模型的'广度'带来的同质化陷阱")
