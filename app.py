@@ -7,7 +7,10 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import numpy as np
 from supabase import create_client
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
+import extra_streamlit_components as stx
+import os
 
 # ===== 页面配置 =====
 st.set_page_config(page_title="AI趋同度测试", layout="wide")
@@ -19,17 +22,56 @@ SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZWJteHJiamZsbnlrb3RjY21hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MzcxNDYsImV4cCI6MjEwNDUxMzE0Nn0.3CYlfLv_WeliP48vFG108fCNLD-BIhwINj25nkMElqo"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# ===== 设备唯一ID（Cookie 持久化，刷新不丢） =====
+cookie_manager = stx.CookieManager(key="ai_sim_cookies")
+DEVICE_COOKIE_NAME = "ai_sim_device_id"
+
+def get_device_id():
+    # 1) 优先从 cookie 读取（刷新/重开浏览器也能识别同一台设备）
+    device_id = cookie_manager.get(DEVICE_COOKIE_NAME)
+    if device_id:
+        return device_id
+    # 2) 本次会话内已生成过
+    if st.session_state.get("__device_id"):
+        return st.session_state["__device_id"]
+    # 3) 新设备：生成 UUID 并写入 cookie + session_state
+    new_id = str(uuid.uuid4())
+    st.session_state["__device_id"] = new_id
+    try:
+        cookie_manager.set(
+            DEVICE_COOKIE_NAME,
+            new_id,
+            expires_at=datetime.now() + timedelta(days=365),
+            key="set_device_cookie",
+        )
+    except Exception:
+        pass
+    return new_id
+
+device_id = get_device_id()
+
 # ===== 数据读写 =====
 def get_all_submissions():
     response = supabase.table("submissions").select("*").order("created_at").execute()
     return response.data
 
-def add_submission(name, text):
-    supabase.table("submissions").insert({"name": name, "text": text}).execute()
+def add_submission(name, text, device_id):
+    supabase.table("submissions").insert({
+        "name": name,
+        "text": text,
+        "device_id": device_id,
+    }).execute()
 
 def name_exists(name):
-    """检查该昵称是否已经提交过（服务端去重）"""
+    """检查该昵称是否已经提交过"""
     response = supabase.table("submissions").select("*").eq("name", name).execute()
+    return len(response.data) > 0
+
+def device_exists(dev_id):
+    """检查该设备是否已经提交过"""
+    if not dev_id:
+        return False
+    response = supabase.table("submissions").select("*").eq("device_id", dev_id).execute()
     return len(response.data) > 0
 
 # ===== 左侧：提交区 =====
@@ -39,8 +81,11 @@ with st.sidebar:
     all_data = get_all_submissions()
     st.metric("📊 已提交文案数", len(all_data))
 
-    if st.session_state.get("submitted"):
-        st.success("✅ 你已经提交过了，每人限提交一次～")
+    # 双重检查：session_state 或 数据库里已有本设备记录
+    already_submitted = st.session_state.get("submitted") or device_exists(device_id)
+
+    if already_submitted:
+        st.success("✅ 你已经提交过了，每台设备限提交一次～")
     else:
         with st.form("submit_form"):
             name = st.text_input("你的昵称", help="用于限制每人只提交一次，请勿与他人重复")
@@ -54,10 +99,12 @@ with st.sidebar:
                     st.error("❌ 请填写昵称（用于限制每人提交一次）")
                 elif not text:
                     st.error("❌ 请粘贴你的文案")
+                elif device_exists(device_id):
+                    st.error("❌ 本设备已提交过，每台设备限提交一次")
                 elif name_exists(name):
-                    st.error(f"❌ 昵称「{name}」已提交过，每人限提交一次")
+                    st.error(f"❌ 昵称「{name}」已被使用，请换一个")
                 else:
-                    add_submission(name, text)
+                    add_submission(name, text, device_id)
                     st.session_state["submitted"] = True
                     st.rerun()
 
@@ -89,8 +136,8 @@ n = len(tokenized)
 vectorizer = TfidfVectorizer(
     tokenizer=cut_text,
     token_pattern=None,
-    ngram_range=(1, 2),     # 让"词序/搭配"也参与判定
-    sublinear_tf=True,      # 高频词权重按 1+log(tf) 衰减
+    ngram_range=(1, 2),
+    sublinear_tf=True,
     min_df=1,
 )
 tfidf_matrix = vectorizer.fit_transform(texts)
@@ -109,7 +156,7 @@ for i in range(n):
         jac_sim[i, j] = jac_sim[j, i] = s
 np.fill_diagonal(jac_sim, 1.0)
 
-# 3) 加权平均：0.5 余弦 + 0.5 Jaccard，把虚高的相似度拉回自然区间
+# 3) 加权平均：0.5 余弦 + 0.5 Jaccard（相似度回落到 60-70% 的自然区间）
 sim_matrix = 0.5 * cos_sim + 0.5 * jac_sim
 
 # 全部两两组合
@@ -124,7 +171,6 @@ person_avg = (sim_matrix.sum(axis=1) - 1) / (n - 1)
 
 # ===== Matplotlib中文字体设置 =====
 import matplotlib.font_manager as fm
-import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
 font_path = os.path.join(current_dir, 'simhei.ttf')
 if os.path.exists(font_path):
