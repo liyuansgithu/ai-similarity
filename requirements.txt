@@ -5,3 +5,4 @@ wordcloud
 matplotlib
 numpy
 supabase
+extra-streamlit-components
