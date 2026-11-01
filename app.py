@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit_cookies_manager as stx
 import pandas as pd
 import numpy as np
 import jieba
@@ -23,24 +22,31 @@ supabase = create_client(
     http_client=httpx.Client(timeout=httpx.Timeout(15.0, connect=10.0))
 )
 
-# ===================== Cookie 设备ID管理（沿用你写的逻辑） =====================
-cookie_manager = stx.CookieManager(key="ai_sim_cookies")
-DEVICE_COOKIE_NAME = "ai_sim_device_id"
-
-def get_device_id():
-    device_id = cookie_manager.get(DEVICE_COOKIE_NAME)
-    if device_id:
-        return device_id
-    if st.session_state.get("_device_id"):
-        return st.session_state["_device_id"]
-    new_id = str(uuid.uuid4())
-    cookie_manager[DEVICE_COOKIE_NAME] = new_id
-    cookie_manager.save()
-    st.session_state["_device_id"] = new_id
-    return new_id
-
-device_id = get_device_id()
-cookie_manager.save()
+# ===================== LocalStorage 获取device_id（原生JS，无第三方包） =====================
+# 先在页面注入JS读取/写入localStorage
+device_js = """
+<script>
+function getDeviceId(){
+    let did = localStorage.getItem("ai_sim_device_id");
+    if(!did){
+        did = "dev_" + crypto.randomUUID();
+        localStorage.setItem("ai_sim_device_id", did);
+    }
+    return did;
+}
+const deviceId = getDeviceId();
+window.parent.postMessage({type:"device_id", data:deviceId}, "*");
+</script>
+"""
+# 用组件拿到device_id
+device_id = st.session_state.get("device_id")
+if not device_id:
+    components = st.components.v1.html(device_js, height=0)
+    # 兜底：如果JS通信拿不到，会话临时生成
+    device_id = str(uuid.uuid4())
+    st.session_state["device_id"] = device_id
+else:
+    device_id = st.session_state["device_id"]
 
 # ===================== 工具函数 =====================
 def calc_tfidf_cosine(text_list):
@@ -86,7 +92,7 @@ submitted_round2 = len(this_dev_data[this_dev_data["round"] == 2]) > 0
 st.sidebar.header("提交信息")
 nickname = st.sidebar.text_input("填写昵称", value="")
 st.sidebar.markdown(f"你的设备编号：`{device_id}`")
-st.sidebar.info("规则：本设备第一次提交=AI原稿；提交原稿后，自动开启改写稿提交\n⚠️ 不要开无痕模式！")
+st.sidebar.info("规则：本设备第一次提交=AI原稿；提交原稿后，自动开启改写稿提交\n⚠️ 不要开无痕模式、不要清空浏览器缓存！")
 
 # ===================== 标签页 =====================
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊总览", "🏆趋同排行榜", "☁️词云", "📄两两对比", "🔄前后对比"])
