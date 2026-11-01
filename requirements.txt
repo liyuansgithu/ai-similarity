@@ -1,9 +1,8 @@
 streamlit
-supabase
-httpx
 pandas
-numpy
 jieba
 scikit-learn
-matplotlib
 wordcloud
+matplotlib
+numpy
+supabase
