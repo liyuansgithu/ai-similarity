@@ -1,5 +1,4 @@
 streamlit
-streamlit-cookies-manager
 supabase
 httpx
 pandas
@@ -8,4 +7,3 @@ jieba
 scikit-learn
 matplotlib
 wordcloud
-uuid
