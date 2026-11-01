@@ -141,7 +141,7 @@ with st.sidebar:
                         add_submission(name2, text2, device_id)
                         st.rerun()
         else:
-            st.info("✅ 你已提交第一轮（前测）。等老师开放第二轮后，可提交改写稿～")
+            st.info("✅ 你已提交第一轮（前测）。通过勾选上面的选项可提交改写稿～")
     else:
         with st.form("submit_form"):
             name = st.text_input("你的昵称", help="用于限制每人只提交一次，请勿与他人重复")
