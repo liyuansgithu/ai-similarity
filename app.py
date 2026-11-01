@@ -9,21 +9,24 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 import io
 from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 import httpx
 
 GAMMA = 0.45
 
-# ===================== Supabase 硬编码（和你现在保持一致） =====================
+# ===================== Supabase 配置 =====================
 SUPABASE_URL = "https://znebmxrbjflnykotccma.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuzWJteHJiamZsbnlrb3RjY21hIiwiYXpwIjoiYW5vbiIsImlhdCI6MTczODg5M2cxNDY0NCwiZXhwIjoxOTUxMzE0NzY0fQ.3CYIfLv_WeliP48vFG108fCNLD-BlhwlNj25nkMElqo"
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_KEY,
-    http_client=httpx.Client(timeout=httpx.Timeout(15.0, connect=10.0))
+
+custom_http = httpx.Client(timeout=httpx.Timeout(15.0, connect=10.0))
+options = ClientOptions(
+    postgrest_client_timeout=15,
+    storage_client_timeout=15,
+    http_client=custom_http
 )
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
 
 # ===================== LocalStorage 获取device_id（原生JS，无第三方包） =====================
-# 先在页面注入JS读取/写入localStorage
 device_js = """
 <script>
 function getDeviceId(){
@@ -38,15 +41,11 @@ const deviceId = getDeviceId();
 window.parent.postMessage({type:"device_id", data:deviceId}, "*");
 </script>
 """
-# 用组件拿到device_id
 device_id = st.session_state.get("device_id")
 if not device_id:
-    components = st.components.v1.html(device_js, height=0)
-    # 兜底：如果JS通信拿不到，会话临时生成
+    st.components.v1.html(device_js, height=0)
     device_id = str(uuid.uuid4())
     st.session_state["device_id"] = device_id
-else:
-    device_id = st.session_state["device_id"]
 
 # ===================== 工具函数 =====================
 def calc_tfidf_cosine(text_list):
