@@ -1,8 +1,11 @@
 streamlit
-scikit-learn
-jieba
-wordcloud
-matplotlib
-numpy
+streamlit-cookies-manager
 supabase
-extra-streamlit-components
+httpx
+pandas
+numpy
+jieba
+scikit-learn
+matplotlib
+wordcloud
+uuid
