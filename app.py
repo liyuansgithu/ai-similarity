@@ -11,8 +11,8 @@ from supabase import create_client, Client
 import httpx
 
 # ===================== 1. 初始化supabase（带超时，解决你刚才的ConnectError） =====================
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
+url = st.secrets["https://znebmxrbjflnykotccma.supabase.co"]
+key = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZWJteHJiamZsbnlrb3RjY21hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5MzcxNDYsImV4cCI6MjEwNDUxMzE0Nn0.3CYlfLv_WeliP48vFG108fCNLD-BIhwINj25nkMElqo"]
 supabase: Client = create_client(
     url,
     key,
